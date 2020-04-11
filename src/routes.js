@@ -19,7 +19,7 @@ const fetchFollowing = async (address) => {
 };
 
 router.get("/", async (req, res) => {
-  const data = await db.query("select 13");
+  const data = await db.query("select 42");
   res.json({ hello: data });
 });
 
