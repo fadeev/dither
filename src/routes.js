@@ -18,8 +18,9 @@ const fetchFollowing = async (address) => {
   );
 };
 
-router.get("/", function (req, res) {
-  res.sendFile(__dirname + "/index.html");
+router.get("/", async (req, res) => {
+  const data = await db.query("select 13");
+  res.json({ hello: data });
 });
 
 router.get("/select", async (req, res) => {

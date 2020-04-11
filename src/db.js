@@ -1,42 +1,40 @@
 const fs = require("fs");
 const path = require("path");
-const { Client } = require("pg");
+const pg = require("pg");
 const axios = require("axios");
 const ReconnectingWebSocket = require("reconnecting-websocket");
 const WebSocket = require("ws");
 const config = require("./config.json");
 const init = fs.readFileSync(path.resolve(__dirname, "db.sql"), "utf8");
 
-const client = new Client(config.db);
+// const subscribe = {
+//   jsonrpc: "2.0",
+//   method: "subscribe",
+//   id: "1",
+//   params: ["tm.event = 'NewBlock'"],
+// };
 
-const subscribe = {
-  jsonrpc: "2.0",
-  method: "subscribe",
-  id: "1",
-  params: ["tm.event = 'NewBlock'"],
-};
+// let socket = new ReconnectingWebSocket(config.lcd.wss, [], { WebSocket });
 
-let socket = new ReconnectingWebSocket(config.lcd.wss, [], { WebSocket });
+// socket.onopen = () => {
+//   socket.send(JSON.stringify(subscribe));
+// };
 
-socket.onopen = () => {
-  socket.send(JSON.stringify(subscribe));
-};
-
-socket.onmessage = async (msg) => {
-  let msgData = JSON.parse(msg.data);
-  if (msgData.result.data && msgData.result.data.value) {
-    const height = msgData.result.data.value.block.header.height;
-    const url = `${config.lcd.lcd}/txs?tx.height=${height}`;
-    const txs = await axios.get(url);
-    txs.data.txs.forEach((tx) => {
-      const address = tx.tx.value.msg[0].value.to_address;
-      const dither = "cosmos1lfq5rmxmlp8eean0cvr5lk49zglcm5aqyz7mgq";
-      if (address === dither) {
-        insertTx(tx);
-      }
-    });
-  }
-};
+// socket.onmessage = async (msg) => {
+//   let msgData = JSON.parse(msg.data);
+//   if (msgData.result.data && msgData.result.data.value) {
+//     const height = msgData.result.data.value.block.header.height;
+//     const url = `${config.lcd.lcd}/txs?tx.height=${height}`;
+//     const txs = await axios.get(url);
+//     txs.data.txs.forEach((tx) => {
+//       const address = tx.tx.value.msg[0].value.to_address;
+//       const dither = "cosmos1lfq5rmxmlp8eean0cvr5lk49zglcm5aqyz7mgq";
+//       if (address === dither) {
+//         insertTx(tx);
+//       }
+//     });
+//   }
+// };
 
 const insertTx = async (tx) => {
   const col = "id, data, created_at, type, body, parent, from_address, txhash";
@@ -71,14 +69,42 @@ const fetchTxs = async (page = 1) => {
   }
 };
 
+const connect = () => {
+  return new Promise((resolve) => {
+    client = new pg.Pool(config.db);
+    client.connect((error) => {
+      if (error) {
+        console.log("DB connection failed. Retrying...");
+        setTimeout(() => {
+          connect();
+        }, 1000);
+      } else {
+        console.log("DB connected.");
+        resolve(client);
+      }
+    });
+  });
+};
+
+let client;
+
 module.exports = {
-  init: async () => {
-    client.connect();
-    // client.query(init);
-    // fetchTxs();
+  init: async (io) => {
+    connect().then((cl) => {
+      client = cl;
+      client.query(init);
+      fetchTxs();
+      client.query("listen new_newtx");
+      client.on("notification", async (data) => {
+        const payload = JSON.parse(data.payload);
+        io.emit("memo", payload);
+      });
+      setInterval(() => {
+        io.emit("memo", { type: "post", body: "body" });
+      }, 2000);
+    });
   },
   query: (text, params, callback) => {
     return client.query(text, params, callback);
   },
-  client,
 };
