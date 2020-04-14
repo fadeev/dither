@@ -1,8 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const config = require("./config.json");
 
 const fetchFollowing = async (address) => {
+  if (!address) {
+    return config.defaultFollowing;
+  }
   const query = `
     select x.parent
     from (
