@@ -11,21 +11,5 @@
     "url": "https://lcd.nylira.net/txs?transfer.recipient=cosmos1lfq5rmxmlp8eean0cvr5lk49zglcm5aqyz7mgq&limit=100",
     "wss": "wss://rpc.nylira.net:443/websocket",
     "lcd": "https://lcd.nylira.net"
-  },
-  "blockchains": [
-    "http://95.217.135.90:26657/websocket",
-    "http://ibc01.dokia.cloud:26657/websocket",
-    "http://ibc-testnet1.bandchain.org:26657/websocket",
-    "http://goz.irisnet.org:26657/websocket",
-    "http://157.230.255.202:26657/websocket",
-    "http://ibc-alpha.kava.io:26657/websocket",
-    "http://gozmelea.mycryptobets.com:26657/websocket",
-    "http://ibc-alpha.desmos.network:26657/websocket",
-    "http://ibc.ping.pub:26657/websocket",
-    "http://95.217.135.90:26657/websocket",
-    "http://shitcoincasinos.com:26657/websocket",
-    "http://ibc.umbrellavalidator.com:26657/websocket",
-    "http://ibc1.vitwit.in:26657/websocket",
-    "http://ibc.vitwit.in:26657/websocket"
-  ]
+  }
 }
