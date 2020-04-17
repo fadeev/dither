@@ -27,7 +27,8 @@ const fetchTimeline = async (following, after) => {
   const query = `
     select
       *,
-      (select count(tx.*) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
+      (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
+      (select count(distinct tx.from_address) from txs as tx where tx.type = 're[pst' and tx.parent = txs.txhash) as repost_count,
       (select count(tx.*) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
       (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
       (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name

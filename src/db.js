@@ -95,7 +95,6 @@ module.exports = {
   init: async (io) => {
     client = await connect();
     client.query(init);
-    // For testing:
     // setInterval(() => {
     //   io.emit("newtx", {
     //     body: "🎉",
@@ -103,17 +102,16 @@ module.exports = {
     //     from_address: "cosmos1z9l4hmt29ejvqrxy4vpcwa2vf94aftgzlwfyg8",
     //     like_count: "0",
     //     parent:
-    //       "96AEABBE1CE814C75662671AA273E4ECAE3527132691272F9D7A1C3C9252CA1E",
+    //       "5AB2CAB0DD45CFC7A15CEF7350A8449C173A5FDD020A6DC0541BA742A003DCF0",
     //     repost_count: "0",
     //     txhash:
     //       "96AEABBE1CE814C75662671AA273E4ECAE3527132691272F9D7A1C3C9252CA1E",
-    //     type: "post",
+    //     type: "like",
     //   });
-    // }, 2000);
+    // }, 1000);
     client.query("listen newtx");
     client.on("notification", async (data) => {
       const payload = JSON.parse(data.payload);
-      console.log("newtx", payload);
       io.emit("newtx", payload);
     });
     await fetchTxs();
@@ -121,4 +119,4 @@ module.exports = {
   query: (text, params, callback) => {
     return client.query(text, params, callback);
   },
-};
+}

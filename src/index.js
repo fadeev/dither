@@ -16,4 +16,4 @@ app.use(cors());
 
 app.use("/", routes);
 
-http.listen(config.server.port);
+http.listen(config.server.port)
