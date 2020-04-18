@@ -7,6 +7,8 @@ const WebSocket = require("ws");
 const config = require("./config.json");
 const init = fs.readFileSync(path.resolve(__dirname, "db.sql"), "utf8");
 
+let client;
+
 const subscribe = {
   jsonrpc: "2.0",
   method: "subscribe",
@@ -89,7 +91,87 @@ const connect = () => {
   });
 };
 
-let client;
+const fetchMemo = async (txhash) => {
+  const query = `
+    select
+      *,
+      (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
+      (select count(distinct tx.from_address) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
+      (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
+      (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name
+    from txs
+    where
+      txs.txhash = $1
+    limit 1
+  `;
+  return (await client.query(query, [txhash])).rows[0];
+};
+
+const fetchFollowing = async (address) => {
+  if (!address) {
+    return config.defaultFollowing;
+  }
+  const query = `
+    select x.parent
+    from (
+      select
+        row_number() over (partition by parent order by created_at desc) as r,
+        t.*
+      from
+        txs t where (t.type = 'follow' or t.type = 'unfollow') and t.from_address = $1) x
+    where x.r <= 1 and x.type = 'follow'
+  `;
+  const following = (await client.query(query, [address])).rows.map(
+    (f) => f.parent
+  );
+  return [...following, address];
+};
+
+const fetchTimeline = async (address, after) => {
+  const following = await fetchFollowing(address);
+  const query = `
+    select
+      *,
+      (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
+      (select count(distinct tx.from_address) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
+      (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
+      (select tx.txhash from txs as tx where tx.type = 'like' and tx.parent = txs.txhash and tx.from_address = $3 limit 1) as like_self,
+      (select tx.txhash from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash and tx.from_address = $3 limit 1) as repost_self,
+      (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name
+    from txs
+    where
+      txs.from_address = any ($1)
+      and txs.type = 'post'
+      and txs.created_at < $2
+    order by created_at desc
+    limit 10
+  `;
+  const timeline = (await client.query(query, [following, after, address]))
+    .rows;
+  return timeline;
+};
+
+const fetchFeed = async (address, after) => {
+  const query = `
+    select
+      *,
+      (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
+      (select count(distinct tx.from_address) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
+      (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
+      (select tx.txhash from txs as tx where tx.type = 'like' and tx.parent = txs.txhash and tx.from_address = $1 limit 1) as like_self,
+      (select tx.txhash from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash and tx.from_address = $1 limit 1) as repost_self,
+      (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name
+    from txs
+    where
+      txs.from_address = $1
+      and txs.type = 'post'
+      and txs.created_at < $2
+    order by created_at desc
+    limit 10
+  `;
+  const feed = (await client.query(query, [address, after])).rows;
+  return feed;
+};
 
 module.exports = {
   init: async (io) => {
@@ -112,11 +194,18 @@ module.exports = {
     client.query("listen newtx");
     client.on("notification", async (data) => {
       const payload = JSON.parse(data.payload);
-      io.emit("newtx", payload);
+      console.log("payload", payload);
+      const memo = await fetchMemo(payload.txhash);
+      console.log("memo", memo);
+      io.emit("newtx", memo);
     });
     await fetchTxs();
   },
   query: (text, params, callback) => {
     return client.query(text, params, callback);
   },
-}
+  fetchMemo,
+  fetchFollowing,
+  fetchTimeline,
+  fetchFeed,
+};
