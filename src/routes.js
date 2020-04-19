@@ -16,7 +16,8 @@ router.get("/select", async (req, res) => {
 router.get("/timeline", async (req, res) => {
   const address = req.query.from_address;
   const after = req.query.after || "2099-01-01T12:00:00.000Z";
-  const timeline = await db.fetchTimeline(address, after);
+  const following = await db.fetchFollowing(address);
+  const timeline = await db.fetchTimeline(following, address, after);
   res.send(timeline);
 });
 
@@ -40,7 +41,7 @@ router.get("/txs", async (req, res) => {
 router.get("/feed", async (req, res) => {
   const address = req.query.from_address;
   const after = req.query.after || "2099-01-01T12:00:00.000Z";
-  const feed = await db.fetchFeed(address, after);
+  const feed = await db.fetchTimeline([address], address, after);
   res.send(feed);
 });
 
@@ -48,6 +49,13 @@ router.get("/tx", async (req, res) => {
   const txhash = req.query.txhash;
   const address = req.query.from_address;
   const data = await db.fetchMemo(txhash, address);
+  res.send(data);
+});
+
+router.get("/comments", async (req, res) => {
+  const txhash = req.query.txhash;
+  const address = req.query.from_address;
+  const data = await db.fetchComments(txhash, address);
   res.send(data);
 });
 

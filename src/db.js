@@ -40,8 +40,9 @@ socket.onmessage = async (msg) => {
 };
 
 const insertTx = (tx) => {
-  const col = "txhash, tx, created_at, type, body, parent, from_address";
-  const val = "$1, $2, $3, $4, $5, $6, $7";
+  const col =
+    "txhash, tx, created_at, type, body, parent, from_address, inserted_at";
+  const val = "$1, $2, $3, $4, $5, $6, $7, default";
   const insert = `insert into txs (${col}) values (${val}) on conflict do nothing;`;
   client.query(insert, [
     tx.txhash,
@@ -91,24 +92,6 @@ const connect = () => {
   });
 };
 
-const fetchMemo = async (txhash, address) => {
-  const query = `
-    select
-      *,
-      (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
-      (select count(distinct tx.from_address) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
-      (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
-      (select tx.txhash from txs as tx where tx.type = 'like' and tx.parent = txs.txhash and tx.from_address = $2 limit 1) as like_self,
-      (select tx.txhash from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash and tx.from_address = $2 limit 1) as repost_self,
-      (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name
-    from txs
-    where
-      txs.txhash = $1
-    limit 1
-  `;
-  return (await client.query(query, [txhash, address])).rows[0];
-};
-
 const fetchFollowing = async (address) => {
   if (!address) {
     return config.defaultFollowing;
@@ -129,50 +112,53 @@ const fetchFollowing = async (address) => {
   return [...following, address];
 };
 
-const fetchTimeline = async (address, after) => {
-  const following = await fetchFollowing(address);
+const memoSelect = `
+  *,
+  (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
+  (select count(distinct tx.from_address) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
+  (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
+  (select tx.txhash from txs as tx where tx.type = 'like' and tx.parent = txs.txhash and tx.from_address = $2 limit 1) as like_self,
+  (select tx.txhash from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash and tx.from_address = $2 limit 1) as repost_self,
+  (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name
+`;
+
+const fetchMemo = async (txhash, address) => {
   const query = `
-    select
-      *,
-      (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
-      (select count(distinct tx.from_address) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
-      (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
-      (select tx.txhash from txs as tx where tx.type = 'like' and tx.parent = txs.txhash and tx.from_address = $3 limit 1) as like_self,
-      (select tx.txhash from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash and tx.from_address = $3 limit 1) as repost_self,
-      (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name
+    select ${memoSelect}
+    from txs
+    where
+      txs.txhash = $1
+    limit 1
+  `;
+  return (await client.query(query, [txhash, address])).rows[0];
+};
+
+const fetchComments = async (txhash, address) => {
+  const query = `
+    select ${memoSelect}
+    from txs
+    where
+      txs.parent = $1
+      and txs.type = 'comment'
+    limit 1
+  `;
+  return (await client.query(query, [txhash, address])).rows;
+};
+
+const fetchTimeline = async (following, address, after) => {
+  const query = `
+    select ${memoSelect}
     from txs
     where
       txs.from_address = any ($1)
       and txs.type = 'post'
-      and txs.created_at < $2
+      and txs.created_at < $3
     order by created_at desc
     limit 10
   `;
-  const timeline = (await client.query(query, [following, after, address]))
+  const timeline = (await client.query(query, [following, address, after]))
     .rows;
   return timeline;
-};
-
-const fetchFeed = async (address, after) => {
-  const query = `
-    select
-      *,
-      (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
-      (select count(distinct tx.from_address) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
-      (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
-      (select tx.txhash from txs as tx where tx.type = 'like' and tx.parent = txs.txhash and tx.from_address = $1 limit 1) as like_self,
-      (select tx.txhash from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash and tx.from_address = $1 limit 1) as repost_self,
-      (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name
-    from txs
-    where
-      txs.from_address = $1
-      and txs.type = 'post'
-      and txs.created_at < $2
-    order by created_at desc
-    limit 10
-  `;
-  const feed = (await client.query(query, [address, after])).rows;
-  return feed;
 };
 
 module.exports = {
@@ -207,5 +193,5 @@ module.exports = {
   fetchMemo,
   fetchFollowing,
   fetchTimeline,
-  fetchFeed,
+  fetchComments,
 };
