@@ -91,20 +91,22 @@ const connect = () => {
   });
 };
 
-const fetchMemo = async (txhash) => {
+const fetchMemo = async (txhash, address) => {
   const query = `
     select
       *,
       (select count(distinct tx.from_address) from txs as tx where tx.type = 'like' and tx.parent = txs.txhash) as like_count,
       (select count(distinct tx.from_address) from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash) as repost_count,
       (select count(tx.*) from txs as tx where tx.type = 'comment' and tx.parent = txs.txhash) as comment_count,
+      (select tx.txhash from txs as tx where tx.type = 'like' and tx.parent = txs.txhash and tx.from_address = $2 limit 1) as like_self,
+      (select tx.txhash from txs as tx where tx.type = 'repost' and tx.parent = txs.txhash and tx.from_address = $2 limit 1) as repost_self,
       (select tx.body from txs as tx where tx.type = 'set-displayname' and tx.from_address = txs.from_address order by tx.created_at desc limit 1) as display_name
     from txs
     where
       txs.txhash = $1
     limit 1
   `;
-  return (await client.query(query, [txhash])).rows[0];
+  return (await client.query(query, [txhash, address])).rows[0];
 };
 
 const fetchFollowing = async (address) => {
@@ -184,19 +186,17 @@ module.exports = {
     //     from_address: "cosmos1z9l4hmt29ejvqrxy4vpcwa2vf94aftgzlwfyg8",
     //     like_count: "0",
     //     parent:
-    //       "5AB2CAB0DD45CFC7A15CEF7350A8449C173A5FDD020A6DC0541BA742A003DCF0",
+    //       "E25D7E9D27BEDF0DA8C8D4376C0D1E707B8391CBF570B9D8B38BCA7ECA7BE84C",
     //     repost_count: "0",
     //     txhash:
     //       "96AEABBE1CE814C75662671AA273E4ECAE3527132691272F9D7A1C3C9252CA1E",
     //     type: "like",
     //   });
-    // }, 1000);
+    // }, 2000);
     client.query("listen newtx");
     client.on("notification", async (data) => {
       const payload = JSON.parse(data.payload);
-      console.log("payload", payload);
       const memo = await fetchMemo(payload.txhash);
-      console.log("memo", memo);
       io.emit("newtx", memo);
     });
     await fetchTxs();

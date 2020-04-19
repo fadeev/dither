@@ -44,4 +44,11 @@ router.get("/feed", async (req, res) => {
   res.send(feed);
 });
 
+router.get("/tx", async (req, res) => {
+  const txhash = req.query.txhash;
+  const address = req.query.from_address;
+  const data = await db.fetchMemo(txhash, address);
+  res.send(data);
+});
+
 module.exports = router;
